@@ -1,0 +1,22 @@
+Package: ABLXtag
+Version: 1.0
+Title: Analysis of Microwave Telemetry PSAT tag data
+Description: 
+Authors@R: person("Cindy", "Tribuzio", , "cindy.tribuzio@noaa.gov", c("aut", "cre"))
+Depends:
+    R (>= 3.1.0)
+Imports:
+    animation,
+    date,
+    ellipse,
+    fields,
+    mapdata,
+    maps,
+    maptools,
+    MASS,
+    raster,
+    readxl,
+    rgdal,
+    sp
+LazyData: true
+RoxygenNote: 5.0.1
