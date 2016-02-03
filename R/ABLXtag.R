@@ -618,11 +618,6 @@ prepb<-function (kfit, prepf, span = NULL) {
     print("You have positive Depth values! Please correct and re-run this function")
   if (any(prepf[, 4] > 180)) 
     print("You have Longitude values greater than 180. Please manipulate your longitude values to be -180 to 180.")
-  if (fill.sst) {
-    if (is.null(span)) 
-      span = 0.75
-    prepf[, 6] = .fill.vals(prepf[, 6], span = span)
-  }
   fmat = as.data.frame(cbind(prepf[, rev(1:3)], kfit$var.most.prob.track, 
                              kfit$most.prob.track, prepf[, c(7, 6)]))
   names(fmat) = c("Year", "Month", "Day", "V11", "V12", "V21", 
@@ -765,49 +760,43 @@ make.btrack<-function (fmat, bathy, save.samp = F, mintype = 2, ci = 0.95,
 itersf<-function(iter,xtrack,kf.dir){
   newmat<-as.data.frame(matrix(data = NA,ncol = 12))
   colnames(newmat)<-c("Year","Month","Day","V11","V12","V21","V22","Lon_E","Lat_N","maxz","maxt","i")
+  kfmat<-as.data.frame(matrix(data = NA,ncol = 12))
+  colnames(kfmat)<-c("Year","Month","Day","V11","V12","V21","V22","Lon_E","Lat_N","max_depth","SST","i")
   for (i in 1:iter){
     fit = kftrack(xtrack[,1:5],kf.dir=kfdir)
-    fmat = prepb(fit,xtrack)   
+    fmat = prepb(fit,xtrack) 
+    kfmodelout = cbind(fmat,i)
     btrack = make.btrack(fmat, bathy)
     tmodelout<-cbind(btrack,i)
     newmat<-rbind(newmat,tmodelout)
+    kfmat<-rbind(kfmat,kfmodelout)
   }
   newmat<-na.omit(newmat) #removes days with no locations
-  unqkey<-as.matrix(unique(newmat[,1:3]))
-  newmat2<-matrix(NA,ncol=21,nrow=nrow(unqkey))
-  colnames(newmat2)<-c("Year","Month","Day","Lat_N","LL_Lat","UL_Lat","Lon_E","LL_Lon","UL_Lon","V11","V11LL","V11UL","V12","V12LL","V12UL",
+  kfmat<-na.omit(kfmat)
+  colnames(kfmat)[10:11]<-c("maxz","maxt")
+  bathysumm<-ddply(newmat,c("Year","Month","Day"),summarize,Lat_m=mean(Lat_N),Lat_LL=quantile(Lat_N,c(0.025,0.975))[1],Lat_UL=quantile(Lat_N,c(0.025,0.975))[2],
+              Lon_m=mean(Lon_E),Lon_LL=quantile(Lon_E,c(0.025,0.975))[1],Lon_UL=quantile(Lon_E,c(0.025,0.975))[2],
+              V11_m=mean(V11),V11_LL=quantile(V11,c(0.025,0.975))[1],V11_UL=quantile(V11,c(0.025,0.975))[2],
+              V12_m=mean(V12),V12_LL=quantile(V12,c(0.025,0.975))[1],V12_UL=quantile(V12,c(0.025,0.975))[2],
+              V21_m=mean(V21),V21_LL=quantile(V21,c(0.025,0.975))[1],V21_UL=quantile(V21,c(0.025,0.975))[2],
+              V22_m=mean(V22),V22_LL=quantile(V22,c(0.025,0.975))[1],V22_UL=quantile(V22,c(0.025,0.975))[2])
+  colnames(bathysumm)<-c("Year","Month","Day","Lat_N","LL_Lat","UL_Lat","Lon_E","LL_Lon","UL_Lon","V11","V11LL","V11UL","V12","V12LL","V12UL",
                        "V21","V21LL","V21UL","V22","V22LL","V22UL")
-  for(k in 1:nrow(unqkey)){
-    loopdat<-newmat[newmat[,1]==unqkey[k,1]&newmat[,2]==unqkey[k,2]&newmat[,3]==unqkey[k,3],] 
-    mlat<-mean(loopdat$Lat_N)
-    mlong<-mean(loopdat$Lon_E)
-    latbci<-quantile(loopdat$Lat_N,c(0.25,0.975))
-    longbci<-quantile(loopdat$Lon_E,c(0.25,0.975))
-    mV11<-mean(loopdat$V11)
-    ciV11<-quantile(loopdat$V11,c(0.25,0.975))
-    mV12<-mean(loopdat$V12)
-    ciV12<-quantile(loopdat$V12,c(0.25,0.975))
-    mV21<-mean(loopdat$V21)
-    ciV21<-quantile(loopdat$V21,c(0.25,0.975))
-    mV22<-mean(loopdat$V22)
-    ciV22<-quantile(loopdat$V22,c(0.25,0.975))
-    newmat2[k,1:3]<-unqkey[k,]
-    newmat2[k,4]<-mlat
-    newmat2[k,5:6]<-latbci
-    newmat2[k,7]<-mlong
-    newmat2[k,8:9]<-longbci
-    newmat2[k,10]<-mV11
-    newmat2[k,11:12]<-ciV11
-    newmat2[k,13]<-mV12
-    newmat2[k,14:15]<-ciV12
-    newmat2[k,16]<-mV21
-    newmat2[k,17:18]<-ciV21
-    newmat2[k,19]<-mV22
-    newmat2[k,20:21]<-ciV22
-  }
-  write.table(newmat,paste("modeliters",tagID,".csv",sep=""), sep=',',row.names=F)
+  bathysumm$model<-"Bathy"
+  kfsumm<-ddply(kfmat,c("Year","Month","Day"),summarize,Lat_m=mean(Lat_N),Lat_LL=quantile(Lat_N,c(0.025,0.975))[1],Lat_UL=quantile(Lat_N,c(0.025,0.975))[2],
+                   Lon_m=mean(Lon_E),Lon_LL=quantile(Lon_E,c(0.025,0.975))[1],Lon_UL=quantile(Lon_E,c(0.025,0.975))[2],
+                   V11_m=mean(V11),V11_LL=quantile(V11,c(0.025,0.975))[1],V11_UL=quantile(V11,c(0.025,0.975))[2],
+                   V12_m=mean(V12),V12_LL=quantile(V12,c(0.025,0.975))[1],V12_UL=quantile(V12,c(0.025,0.975))[2],
+                   V21_m=mean(V21),V21_LL=quantile(V21,c(0.025,0.975))[1],V21_UL=quantile(V21,c(0.025,0.975))[2],
+                   V22_m=mean(V22),V22_LL=quantile(V22,c(0.025,0.975))[1],V22_UL=quantile(V22,c(0.025,0.975))[2])
+  colnames(kfsumm)<-c("Year","Month","Day","Lat_N","LL_Lat","UL_Lat","Lon_E","LL_Lon","UL_Lon","V11","V11LL","V11UL","V12","V12LL","V12UL",
+                       "V21","V21LL","V21UL","V22","V22LL","V22UL")
+  kfsumm$model<-"KF"
+  newmat2<-rbind(bathysumm,kfsumm)
+  write.table(newmat,paste("modeliters_bathy",tagID,".csv",sep=""), sep=',',row.names=F)
+  write.table(kfmat,paste("modeliters_kf",tagID,".csv",sep=""), sep=',',row.names=F)
   write.table(newmat2,paste("modeliters_summary",tagID,".csv",sep=""), sep=',',row.names=F)
-  list("modeliterations"= newmat, "iter_summary" = newmat2)
+  list("bathy_iters"= newmat, "kf_iters"=kfmat, "iter_summary" = newmat2)
 }
 
 ###################################################################
@@ -818,12 +807,14 @@ itersf<-function(iter,xtrack,kf.dir){
 #' @param btrack results of make.btrack
 #' @param cex adjusts size of points
 #' @param add logical to add points
+#' @param xlims bounds for the longitude, in the form c(xlow,xhigh)
+#' @param ylims bounds for the latitude
 #' @param alpha graphical parameter
 #' @param bymonth logical if the points should be colored by month
 #' @param pch point type
 #' @param bg device background color
 #' @param legend logical if legend should be included
-plot.btrack<-function (btrack,cex = 1.5, ci = F, add = F, 
+plot.btrack<-function (btrack,cex = 1.5, ci = F,  xlims=xlims,ylims=ylims,
                        alpha = 0.15, bymonth = T, pch = 21, bg = 4, legend = F) 
 {
   if (legend == T) {
@@ -835,27 +826,25 @@ plot.btrack<-function (btrack,cex = 1.5, ci = F, add = F,
     par(mar = c(5.1, 4.1, 4.1, 4.1))
   }
   len = length(btrack[, 1])
-  btrack = btrack[!is.na(btrack[, 8]), ]
-  btrack = btrack[!is.na(btrack[, 9]), ]
-  xlims = c(min(btrack[, 8], na.rm = T) - 5, max(btrack[, 8], na.rm = T) + 5) #use this for flexible code
-  ylims = c(min(btrack[, 9], na.rm = T) - 3, max(btrack[, 9],na.rm = T) + 3)
-  #xlims<-c(-180,-120) #use this to hard code
+  btrack = btrack[!is.na(btrack[, c("Lon_E")]), ]
+  btrack = btrack[!is.na(btrack[, c("Lat_N")]), ]
+  #move the x/y lims to outside the function for use in for loops, can activate either of the below to have it built into the code
+  #xlims = c(min(btrack[, 8], na.rm = T) - 5, max(btrack[, 8], na.rm = T) + 5) #use this for flexible code
+  #ylims = c(min(btrack[, 9], na.rm = T) - 3, max(btrack[, 9],na.rm = T) + 3)
+  #xlims<-c(-140,-120) #use this to hard code
   #ylims<-c(30,64.999)
   map("worldHires",xlim=xlims, ylim=ylims,border=1,fill=TRUE,col='gray')
-  map.axes()
-  S = SpatialPointsDataFrame(btrack[, 8:9], btrack)
+  map.axes(cex.axis=2)
+  S = SpatialPointsDataFrame(btrack[, c("Lon_E","Lat_N")], btrack)
   if (ci) {
-    sapply(1:len, function(i) .makeCI(as.numeric(btrack[i, 
-                                                        4:9]), col = rgb(0.1, 0.7, 0.5, alpha = alpha), border = 0))
+    sapply(1:len, function(i) .makeCI(as.numeric(btrack[i,4:9]), col = rgb(0.1, 0.7, 0.5, alpha = alpha), border = 0))
   }
   points(S, pch = pch, bg = bg)
   if (bymonth==T) {
-    .plot.by.month(S@data, cex = cex, pch = pch)
+    .plot.by.month(S@data, cex = 2, pch = pch)
   }
-  lines(btrack[1, 8], btrack[1, 9], typ = "p", pch = 21, col = 1, 
-        bg = 3, cex = 1.8)
-  lines(btrack[len, 8], btrack[len, 9], typ = "p", pch = 24, 
-        col = 1, bg = 2, cex = 1.8)
+  lines(btrack[1, c("Lon_E")], btrack[1, c("Lat_N")], typ = "p", pch = 21, col = 1, bg = 3, cex = 1.8)
+  lines(btrack[len, c("Lon_E")], btrack[len, c("Lat_N")], typ = "p", pch = 24,col = 1, bg = 2, cex = 1.8)
   box(lwd = 2)
   if (legend == T) {
     .add.month.scale(small)
@@ -865,47 +854,47 @@ plot.btrack<-function (btrack,cex = 1.5, ci = F, add = F,
 #' Background function for plot.btrack, if bymonth=T
 #' 
 #' @param ttrack created by SpatialPointsDataFrame in plot.btrack
-#' @param saveplot logical if plot should be saved separately
-#' @param filename path for saving plot
 #' @param cex adjusts size of points
 #' @param pch point type
-.plot.by.month<-function (ttrack, saveplot = F, filename = NULL, cex = 2, pch = 21) 
+.plot.by.month<-function (ttrack, cex = 2, pch = 21) 
 {
-  attach(ttrack)
-  mons = unique(Month)
+  mons = unique(ttrack$Month)
   for (i in 1:length(mons)) {
-    lines(ttrack[Month == mons[i], 8:9], typ = "o", cex = cex, 
-          pch = pch, bg = month.colors[month.colors[, 1] == 
-                                         mons[i], 2],lty="dashed")
-    if (saveplot) {
-      savePlot(filename, type = "eps")
-      savePlot(filename, type = "png", res = 100)
-    }
+    lines(ttrack[ttrack$Month == mons[i], c("Lon_E","Lat_N")], typ = "o", cex = cex, 
+          pch = pch, bg = month.colors[month.colors[, 1] == mons[i], 2],lty="dashed")
   }
-  detach(ttrack)
 }
 
-#' Plot raw locations by month (development)
+#' Plots the raw geolocation locations
 #' 
-#' @param ttrack created by SpatialPointsDataFrame in plot.btrack
-#' @param saveplot logical if plot should be saved separately
-#' @param filename path for saving plot
+#' @param rawlocs_dat data.frame of geolocation points, columns Year, Month, Day, Lat, Lon
 #' @param cex adjusts size of points
+#' @param bymonth logical if the points should be colored by month
 #' @param pch point type
-.plot.by.month.raw<-function (ttrack, saveplot = F, filename = NULL, cex = 2, pch = 21) 
+#' @param bg device background color
+plot.rawlocs<-function (rawlocs_dat,cex = 1.5, bymonth = T, pch = 21, bg = 4) 
 {
-  attach(ttrack)
-  mons = unique(Month)
-  for (i in 1:length(mons)) {
-    lines(ttrack[Month == mons[i], 5:4], typ = "o", cex = cex, 
-          pch = pch, bg = month.colors[month.colors[, 1] == 
-                                         mons[i], 2],lty="dashed")
-    if (saveplot) {
-      savePlot(filename, type = "eps")
-      savePlot(filename, type = "png", res = 100)
-    }
+  rawlocs_dat = rawlocs_dat[!is.na(rawlocs_dat[, 5]), ]
+  rawlocs_dat = rawlocs_dat[!is.na(rawlocs_dat[, 4]), ]
+  len = length(rawlocs_dat[, 1])
+  ylims = c(min(rawlocs_dat[, 4]) - 5, max(rawlocs_dat[, 4]) + 5) #use this for flexible code
+  xlims = c(min(rawlocs_dat[, 5]) - 3, max(rawlocs_dat[, 5]) + 3)
+  #xlims<-c(-172,-120) #use this to hard code
+  #ylims<-c(40,62)
+  map("worldHires",xlim=xlims, ylim=ylims,border=1,fill=TRUE,col='gray')
+  map.axes()
+  S = SpatialPointsDataFrame(cbind(rawlocs_dat[,5],rawlocs_dat[,4]), rawlocs_dat)
+  points(S, pch = pch, bg = bg)
+  if (bymonth) 
+    .plot.by.month(S@data, cex = cex, pch = pch)
+  lines(rawlocs_dat[1, 4], rawlocs_dat[1, 5], typ = "p", pch = 21, col = 1, 
+        bg = 3, cex = 1.8)
+  lines(rawlocs_dat[len, 4], rawlocs_dat[len, 5], typ = "p", pch = 24, 
+        col = 1, bg = 2, cex = 1.8)
+  box(lwd = 2)
+  if (legend == T) {
+    .add.month.scale(small)
   }
-  detach(ttrack)
 }
 
 #' Object with monthly colors, can be adapted as desired
@@ -930,8 +919,8 @@ month.colors=cbind(c(8:12,1:7),
 #' 
 .add.month.scale<-function (...) {
   ticks <- c(1:12) + 0.5
-  par(cex = 0.9)
-  image.plot(-matrix(1:13), horizontal = F, col = rev(month.colors[,2]), 
+  par(cex = 2)
+  image.plot(-matrix(1:13), horizontal = F, col = rev(month.colors[,2]),
              axis.args = list(at = -ticks, labels = month.abb[as.numeric(month.colors[,1])]), 
              legend.args = list(text = "", cex = 0.75, side = 3, line = 1), legend.mar = 3.6, legend.only = T, ...)
   par(cex = 1)
@@ -1033,4 +1022,37 @@ CI2shp_boot<-function (track, fname = "testshp", level = 0.95, npoints = 100,
   all.spdf = SpatialPolygonsDataFrame(all.sp, data = track, 
                                       match.ID = T)
   writePolyShape(all.spdf, fname, factor2char = TRUE, max_nchar = 254)
+}
+
+#Function to pull the temperature and depth data only
+#
+#' Function to pull the temperature and depth data only, creates a list containing two data.frames: all data, daily summaries
+#' 
+#' @param xlsfile Path to the excell workboot for tagID
+getMWTdepths<-function (xlsfile,tagID) { 
+  tabs = excel_sheets(xlsfile)
+  atabs<-tabs[grep("Archival",tabs)]
+  adat = NULL
+  print("Retrieving Archival Light, Temp and Depth ")
+  for (i in 1:length(atabs)) {
+    print(paste("retrieving archival record ", i, sep = ""))
+    temp = read_excel(xlsfile, sheet = atabs[i], skip = 1)
+    temp = temp[2:nrow(temp), ]
+    names(temp) = c("Date", "Tval", "Pval", "light", "extT","depth")
+    adat = rbind(adat, temp)
+  }
+  names(adat) = c("Date", "Tval", "Pval", "light", "extT","depth")
+  print("Converting date")
+  adat$local<-as.POSIXct(adat$Date,tz="UTC")
+  attributes(adat$local)$tzone<-"America/Los_Angeles"
+  adat$lday = as.POSIXct(trunc(as.POSIXct(adat$local,format="%m/%d/%Y %H:%M",tz="America/Los_Angeles"), "days")) #maybe add a column for local date/time, will probably require changing fields later in code
+  adat$tagID = tagID
+  print("Calculating daily summary max temp/depth")
+  summarymat<-data.frame(unique(adat$lday))
+  summarymat$maxD = tapply(adat$depth, adat$lday, min)
+  summarymat$minD = tapply(adat$depth, adat$lday, max)
+  summarymat$maxT= tapply(adat$extT, adat$lday, max)
+  summarymat$minT = tapply(adat$extT, adat$lday, min)
+  summarymat$tagID = tagID
+  list("TDdat"= adat, "Daily_summary" = summarymat)
 }
